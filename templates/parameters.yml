@@ -1,0 +1,47 @@
+Parameters:
+  DomainName:
+    Type: String
+    Description: The zone apex or the naked domain name for the blog (without the www)
+    MinLength: 4
+    MaxLength: 253
+    AllowedPattern: "[a-z0-9]+[-.a-z0-9]*(\\.[a-z][a-z]+)+"
+    ConstraintDescription: "Provide a valid domain name using only lowercase letters, numbers, and dash (-)"
+
+  DefaultTTL:
+    Type: Number
+    Description: "TTL in seconds"
+    Default: 30
+
+  MinimumTTL:
+    Type: Number
+    Description: "Minimum cache lifetime in seconds for the CloudFront Distribution"
+    Default: 5
+
+  NotificationEmail:
+    Type: String
+    Description: "Email address to be notified when the blog change has been deployed"
+    MinLength: 6
+    AllowedPattern: ".+@[a-z0-9]+[-.a-z0-9]*(\\.[a-z][a-z]+)+"
+    ConstraintDescription: "Provide a valid email address"
+
+  PriceClass:
+    Type: String
+    Description: "Distribution price class. Default is US-only, PriceClass_All is worldwide but more expensive"
+    Default: PriceClass_100
+    AllowedValues:
+      - PriceClass_100
+      - PriceClass_200
+      - PriceClass_All
+
+  SiteName:
+    Type: String
+    Description: |
+      A human readable name to identify the blog site. This name is used to 
+      name and tag various resources.
+    Default: isubuz
+
+  SiteBuilderImage:
+    Type: String
+    Description: "Docker image used to rebuild the hugo powered site"
+    Default: "isubuz/hugo-deploy"
+

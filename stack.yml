@@ -1,0 +1,403 @@
+# THIS FILE HAS BEEN GENERATED AUTOMATICALLY BY cform AT 2016-12-19 13:20:35.968200899 +0000 GMT.
+# DO NOT MODIFY THIS FILE MANUALLY.
+
+Mappings:
+  RegionMap:
+    ap-northeast-1:
+      S3hostedzoneID: "Z2M4EHUR26P7ZW"
+      websiteendpoint: "s3-website-ap-northeast-1.amazonaws.com"
+    ap-northeast-2:
+      S3hostedzoneID: "Z3W03O7B5YMIYP"
+      websiteendpoint: "s3-website.ap-northeast-2.amazonaws.com"
+    ap-south-1:
+      S3hostedzoneID: "Z11RGJOFQNVJUP"
+      websiteendpoint: "s3-website.ap-south-1.amazonaws.com"
+    ap-southeast-1:
+      S3hostedzoneID: "Z3O0J2DXBE1FTB"
+      websiteendpoint: "s3-website-ap-southeast-1.amazonaws.com"
+    ap-southeast-2:
+      S3hostedzoneID: "Z1WCIGYICN2BYD"
+      websiteendpoint: "s3-website-ap-southeast-2.amazonaws.com"
+    eu-central-1:
+      S3hostedzoneID: "Z21DNDUVLTQW6Q"
+      websiteendpoint: "s3-website.eu-central-1.amazonaws.com"
+    eu-west-1:
+      S3hostedzoneID: "Z1BKCTXD74EZPE"
+      websiteendpoint: "s3-website-eu-west-1.amazonaws.com"
+    sa-east-1:
+      S3hostedzoneID: "Z7KQH4QJS55SO"
+      websiteendpoint: "s3-website-sa-east-1.amazonaws.com"
+    us-east-1:
+      S3hostedzoneID: "Z3AQBSTGFYJSTF"
+      websiteendpoint: "s3-website-us-east-1.amazonaws.com"
+    us-east-2:
+      S3hostedzoneID: "Z2O1EMRO9K5GLX"
+      websiteendpoint: "s3-website.us-east-2.amazonaws.com"
+    us-west-1:
+      S3hostedzoneID: "Z2F56UZL2M1ACD"
+      websiteendpoint: "s3-website-us-west-1.amazonaws.com"
+    us-west-2:
+      S3hostedzoneID: "Z3BJ6K6RIION7M"
+      websiteendpoint: "s3-website-us-west-2.amazonaws.com"
+Parameters:
+  DefaultTTL:
+    Default: 30
+    Description: "TTL in seconds"
+    Type: Number
+  DomainName:
+    AllowedPattern: "[a-z0-9]+[-.a-z0-9]*(\\.[a-z][a-z]+)+"
+    ConstraintDescription: "Provide a valid domain name using only lowercase letters,
+      numbers, and dash (-)"
+    Description: The zone apex or the naked domain name for the blog (without the
+      www)
+    MaxLength: 253
+    MinLength: 4
+    Type: String
+  MinimumTTL:
+    Default: 5
+    Description: "Minimum cache lifetime in seconds for the CloudFront Distribution"
+    Type: Number
+  NotificationEmail:
+    AllowedPattern: ".+@[a-z0-9]+[-.a-z0-9]*(\\.[a-z][a-z]+)+"
+    ConstraintDescription: "Provide a valid email address"
+    Description: "Email address to be notified when the blog change has been deployed"
+    MinLength: 6
+    Type: String
+  PriceClass:
+    AllowedValues:
+    - PriceClass_100
+    - PriceClass_200
+    - PriceClass_All
+    Default: PriceClass_100
+    Description: "Distribution price class. Default is US-only, PriceClass_All is
+      worldwide but more expensive"
+    Type: String
+  SiteBuilderImage:
+    Default: "isubuz/hugo-deploy"
+    Description: "Docker image used to rebuild the hugo powered site"
+    Type: String
+  SiteName:
+    Default: isubuz
+    Description: "A human readable name to identify the blog site. This name is used
+      to \nname and tag various resources.\n"
+    Type: String
+Resources:
+  Certificate:
+    Properties:
+      DomainName:
+        Ref: DomainName
+      SubjectAlternativeNames:
+      - Fn::Sub: "www.${DomainName}"
+    Type: "AWS::CertificateManager::Certificate"
+  CloudFrontDistribution:
+    DependsOn: SiteBucket
+    Properties:
+      DistributionConfig:
+        Aliases:
+        - Ref: DomainName
+        DefaultCacheBehavior:
+          AllowedMethods:
+          - GET
+          - HEAD
+          Compress: true
+          DefaultTTL:
+            Ref: DefaultTTL
+          ForwardedValues:
+            Cookies:
+              Forward: none
+            QueryString: false
+          MinTTL:
+            Ref: MinimumTTL
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: "redirect-to-https"
+        DefaultRootObject: "index.html"
+        Enabled: true
+        Origins:
+        - CustomOriginConfig:
+            HTTPPort: 80
+            HTTPSPort: 443
+            OriginProtocolPolicy: http-only
+          DomainName:
+            Fn::Join:
+            - ""
+            - - Ref: DomainName
+              - "."
+              - Fn::FindInMap:
+                - RegionMap
+                - Ref: "AWS::Region"
+                - websiteendpoint
+          Id: S3Origin
+        PriceClass:
+          Ref: PriceClass
+        ViewerCertificate:
+          AcmCertificateArn:
+            Ref: Certificate
+          SslSupportMethod: sni-only
+    Type: "AWS::CloudFront::Distribution"
+  CodeBuildServiceRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: "sts:AssumeRole"
+          Effect: Allow
+          Principal:
+            Service:
+              Fn::Sub: "codebuild.${AWS::Region}.amazonaws.com"
+        Version: "2012-10-17"
+      Policies:
+      - PolicyDocument:
+          Statement:
+          - Action:
+            - "logs:CreateLogGroup"
+            - "logs:CreateLogStream"
+            - "logs:PutLogEvents"
+            Effect: Allow
+            Resource: "*"
+          Version: "2012-10-17"
+        PolicyName: CloudWatchLogsPolicy
+      - PolicyDocument:
+          Statement:
+          - Action:
+            - "codecommit:GitPull"
+            Effect: Allow
+            Resource: "*"
+          Version: "2012-10-17"
+        PolicyName: CodeCommitPolicy
+      - PolicyDocument:
+          Statement:
+          - Action:
+            - "s3:GetObject"
+            - "s3:GetObjectVersion"
+            - "s3:PutObject"
+            - "s3:ListBucket"
+            - "s3:DeleteObject"
+            Effect: Allow
+            Resource: "*"
+          Version: "2012-10-17"
+        PolicyName: S3Policy
+    Type: "AWS::IAM::Role"
+  CodePipeline:
+    Properties:
+      ArtifactStore:
+        Location:
+          Ref: SiteArtifactsBucket
+        Type: S3
+      Name:
+        Ref: DomainName
+      RoleArn:
+        Fn::GetAtt: CodePipelineServiceRole.Arn
+      Stages:
+      - Actions:
+        - ActionTypeId:
+            Category: Source
+            Owner: AWS
+            Provider: CodeCommit
+            Version: 1
+          Configuration:
+            BranchName: master
+            RepositoryName:
+              Ref: DomainName
+          Name: SourceAction
+          OutputArtifacts:
+          - Name: src
+          RunOrder: 1
+        Name: Source
+      - Actions:
+        - ActionTypeId:
+            Category: Build
+            Owner: AWS
+            Provider: CodeBuild
+            Version: 1
+          Configuration:
+            ProjectName:
+              Ref: SiteBuilder
+          InputArtifacts:
+          - Name: src
+          Name: GenerateAndSyncAction
+          OutputArtifacts:
+          - Name: out
+          RunOrder: 1
+        Name: Build
+    Type: "AWS::CodePipeline::Pipeline"
+  CodePipelineServiceRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - "sts:AssumeRole"
+          Effect: Allow
+          Principal:
+            Service:
+            - "codepipeline.amazonaws.com"
+        Version: "2012-10-17"
+      Policies:
+      - PolicyDocument:
+          Statement:
+          - Action:
+            - "codebuild:*"
+            - "codecommit:*"
+            - "s3:*"
+            - "sns:*"
+            - "iam:PassRole"
+            - "lambda:*"
+            Effect: Allow
+            Resource: "*"
+          Version: "2012-10-17"
+        PolicyName: CodePipelinePolicy
+    Type: "AWS::IAM::Role"
+  DNSRecords:
+    Properties:
+      HostedZoneName:
+        Fn::Sub: "${DomainName}."
+      RecordSets:
+      - AliasTarget:
+          DNSName:
+            Fn::GetAtt: CloudFrontDistribution.DomainName
+          HostedZoneId: Z2FDTNDATAQYW2
+        Name:
+          Fn::Sub: "${DomainName}."
+        Type: A
+      - AliasTarget:
+          DNSName:
+            Fn::GetAtt: RedirectCloudFrontDistribution.DomainName
+          HostedZoneId: Z2FDTNDATAQYW2
+        Name:
+          Fn::Sub: "www.${DomainName}."
+        Type: A
+    Type: "AWS::Route53::RecordSetGroup"
+  RedirectBucket:
+    Properties:
+      AccessControl: BucketOwnerFullControl
+      BucketName:
+        Fn::Sub: "www.${DomainName}"
+      WebsiteConfiguration:
+        RedirectAllRequestsTo:
+          HostName:
+            Ref: DomainName
+          Protocol: http
+    Type: "AWS::S3::Bucket"
+  RedirectBucketPolicy:
+    Properties:
+      Bucket:
+        Ref: RedirectBucket
+      PolicyDocument:
+        Statement:
+        - Action:
+          - "s3:GetObject"
+          Effect: Allow
+          Principal: "*"
+          Resource:
+            Fn::Sub: "arn:aws:s3:::${RedirectBucket}/*"
+          Sid: PolicyForCloudFrontPrivateContent
+    Type: "AWS::S3::BucketPolicy"
+  RedirectCloudFrontDistribution:
+    DependsOn: RedirectBucket
+    Properties:
+      DistributionConfig:
+        Aliases:
+        - Fn::Sub: "www.${DomainName}"
+        DefaultCacheBehavior:
+          AllowedMethods:
+          - GET
+          - HEAD
+          Compress: true
+          DefaultTTL:
+            Ref: DefaultTTL
+          ForwardedValues:
+            Cookies:
+              Forward: none
+            QueryString: false
+          MinTTL:
+            Ref: MinimumTTL
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: "allow-all"
+        Enabled: true
+        Origins:
+        - CustomOriginConfig:
+            HTTPPort: 80
+            HTTPSPort: 443
+            OriginProtocolPolicy: http-only
+          DomainName:
+            Fn::Join:
+            - ""
+            - - Fn::Sub: "www.${DomainName}"
+              - "."
+              - Fn::FindInMap:
+                - RegionMap
+                - Ref: "AWS::Region"
+                - websiteendpoint
+          Id: S3Origin
+        PriceClass:
+          Ref: PriceClass
+        ViewerCertificate:
+          AcmCertificateArn:
+            Ref: Certificate
+          SslSupportMethod: sni-only
+    Type: "AWS::CloudFront::Distribution"
+  SiteArtifactsBucket:
+    Properties:
+      BucketName:
+        Fn::Sub: "artifacts.${DomainName}"
+    Type: "AWS::S3::Bucket"
+  SiteBucket:
+    Properties:
+      AccessControl: PublicRead
+      BucketName:
+        Ref: DomainName
+      WebsiteConfiguration:
+        ErrorDocument: "404.html"
+        IndexDocument: "index.html"
+    Type: "AWS::S3::Bucket"
+  SiteBucketPolicy:
+    Properties:
+      Bucket:
+        Ref: SiteBucket
+      PolicyDocument:
+        Statement:
+        - Action:
+          - "s3:GetObject"
+          Effect: Allow
+          Principal: "*"
+          Resource:
+            Fn::Sub: "arn:aws:s3:::${SiteBucket}/*"
+    Type: "AWS::S3::BucketPolicy"
+  SiteBuilder:
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Description: |
+        Regenerates the blog and syncs changes with the S3 bucket serving
+        the contents for the blog.
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image:
+          Ref: SiteBuilderImage
+        Type: LINUX_CONTAINER
+      Name:
+        Fn::Sub: "${SiteName}-builder"
+      ServiceRole:
+        Fn::GetAtt: CodeBuildServiceRole.Arn
+      Source:
+        BuildSpec:
+          Fn::Sub: |
+            version: 0.1
+            phases:
+              build:
+                commands:
+                  - hugo --theme=hugo-isubuz
+              post_build:
+                commands:
+                  - /blog/s3sync.sh public ${SiteBucket}
+            artifacts:
+              files:
+                - "public/**/*"
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 10
+    Type: "AWS::CodeBuild::Project"
+  SourceRepo:
+    Properties:
+      RepositoryDescription:
+        Fn::Sub: "Git Repository for ${DomainName}"
+      RepositoryName:
+        Ref: DomainName
+    Type: "AWS::CodeCommit::Repository"

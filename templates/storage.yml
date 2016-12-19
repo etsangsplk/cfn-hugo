@@ -1,0 +1,61 @@
+# This template defines the resources required to store the blog content and
+# artifacts generated in the build process.
+
+Resources:
+  SiteBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: 
+        Ref: DomainName
+      AccessControl: PublicRead
+      WebsiteConfiguration:
+        IndexDocument: "index.html"
+        ErrorDocument: "404.html"
+
+  SiteBucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      Bucket:
+        Ref: SiteBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action:
+              - "s3:GetObject"
+            Resource: 
+              Fn::Sub: "arn:aws:s3:::${SiteBucket}/*"
+            Principal: "*"
+  
+  RedirectBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: 
+        Fn::Sub: "www.${DomainName}"
+      AccessControl: BucketOwnerFullControl
+      WebsiteConfiguration:
+        RedirectAllRequestsTo:
+          HostName: 
+            Ref: DomainName
+          Protocol: http
+
+  RedirectBucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      Bucket: 
+        Ref: RedirectBucket
+      PolicyDocument:
+        Statement:
+          - Sid: PolicyForCloudFrontPrivateContent
+            Effect: Allow
+            Action:
+              - "s3:GetObject"
+            Resource: 
+              Fn::Sub: "arn:aws:s3:::${RedirectBucket}/*"
+            Principal: "*"
+
+  SiteArtifactsBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: 
+        Fn::Sub: "artifacts.${DomainName}"
+

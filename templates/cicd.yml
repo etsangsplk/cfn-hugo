@@ -1,0 +1,161 @@
+# This template defines all resources required for the continuous integration
+# and delivery of any changes to the blog, say a new blog post or a change to
+# the theme.
+
+Resources:
+  SourceRepo:
+    Type: "AWS::CodeCommit::Repository"
+    Properties:
+      RepositoryDescription:
+        Fn::Sub: "Git Repository for ${DomainName}"
+      RepositoryName: 
+        Ref: DomainName
+
+  CodePipelineServiceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - "codepipeline.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - PolicyName: CodePipelinePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "codebuild:*"
+                  - "codecommit:*"
+                  - "s3:*"
+                  - "sns:*"
+                  - "iam:PassRole"
+                  - "lambda:*"
+                Resource: "*"
+
+  CodeBuildServiceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+                Fn::Sub: "codebuild.${AWS::Region}.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: CloudWatchLogsPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: "*"
+        - PolicyName: CodeCommitPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "codecommit:GitPull"
+                Resource: "*"
+        - PolicyName: S3Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                  - "s3:GetObjectVersion"
+                  - "s3:PutObject"
+                  - "s3:ListBucket"
+                  - "s3:DeleteObject"
+                Resource: "*"
+
+  SiteBuilder:
+    Type: "AWS::CodeBuild::Project"
+    Properties:
+      Name: 
+        Fn::Sub: "${SiteName}-builder"
+      Description: |
+        Regenerates the blog and syncs changes with the S3 bucket serving
+        the contents for the blog.
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: 
+          Ref: SiteBuilderImage
+      ServiceRole: 
+        Fn::GetAtt: CodeBuildServiceRole.Arn
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: 
+          Fn::Sub: |
+            version: 0.1
+            phases:
+              build:
+                commands:
+                  - hugo --theme=hugo-isubuz
+              post_build:
+                commands:
+                  - /blog/s3sync.sh public ${SiteBucket}
+            artifacts:
+              files:
+                - "public/**/*"
+      Artifacts:
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 10
+
+  CodePipeline:
+    Type: "AWS::CodePipeline::Pipeline"
+    Properties:
+      Name: 
+        Ref: DomainName
+      ArtifactStore:
+        Type: S3
+        Location:
+          Ref: SiteArtifactsBucket
+      RoleArn: 
+        Fn::GetAtt: CodePipelineServiceRole.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: 1
+              Configuration:
+                RepositoryName: 
+                  Ref: DomainName
+                BranchName: master
+              OutputArtifacts:
+                - Name: src
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: GenerateAndSyncAction
+              InputArtifacts:
+                - Name: src
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration:
+                ProjectName: 
+                  Ref: SiteBuilder
+              OutputArtifacts:
+                - Name: out
+              RunOrder: 1
+
